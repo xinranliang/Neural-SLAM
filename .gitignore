@@ -129,3 +129,6 @@ dmypy.json
 
 # DS_Store
 *.DS_Store
+
+pretrained_models*
+tmp*
