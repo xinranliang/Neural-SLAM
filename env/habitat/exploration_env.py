@@ -13,6 +13,10 @@ from PIL import Image
 from torch.nn import functional as F
 from torchvision import transforms
 
+import pycocotools
+from detectron2.structures import BoxMode
+from constants import coco_categories, coco_categories_mapping
+
 if sys.platform == 'darwin':
     matplotlib.use("tkagg")
 else:
@@ -37,6 +41,75 @@ from env.habitat.utils.supervision import HabitatMaps
 from model import get_grid
 
 
+# semantic utils
+def print_scene_objects(sim):
+    scene = sim.semantic_scene
+
+    # key: category_id as specified in coco_categories
+    #      "15" is for background
+    # values: list of instance_id falling into this category_id
+    category_instance_lists = {}
+
+    # key: instance_id
+    # value: category_id as specified in coco_categories
+    #        "6" is for background
+    instance_category_lists = {}
+
+    for obj in scene.objects:
+        if obj is None or obj.category is None:
+            continue
+        print(
+                f"Object id:{obj.id}, category:{obj.category.name()},"
+                f" center:{obj.aabb.center}, dims:{obj.aabb.sizes}"
+            )
+        obj_class = obj.category.name()
+        if obj_class in coco_categories.keys():
+            cat_id = coco_categories[obj_class]
+            obj_id = int(obj.id.split("_")[-1])
+            if cat_id not in category_instance_lists:
+                category_instance_lists[cat_id] = [obj_id]
+            else:
+                category_instance_lists[cat_id].append(obj_id)
+            if obj_id not in instance_category_lists:
+                instance_category_lists[obj_id] = cat_id
+    
+    print(category_instance_lists)
+    print(instance_category_lists)
+    # try to compute bounding box
+
+    # input("Press Enter to continue...")
+    return category_instance_lists, instance_category_lists
+
+
+def area_filter(mask, bounding_box, img_height, img_width, size_tol=0.05):
+    """
+    Function to filter out masks that contain sparse instances
+    for example:
+        0 0 0 0 0 0
+        1 0 0 0 0 0
+        1 0 0 0 1 0    This is a sparse mask
+        0 0 0 0 1 0
+        0 0 0 0 0 0
+        0 0 0 0 0 0
+        1 1 1 1 1 0
+        1 1 1 1 1 1    This is not a sparse mask
+        0 0 0 1 1 1
+        0 0 0 0 0 0
+    """
+    xmin, ymin, xmax, ymax = bounding_box
+    num_positive_pixels = np.sum(mask[ymin:ymax, xmin:xmax])
+    num_total_pixels = (xmax - xmin) * (ymax - ymin)
+    big_enough = (xmax - xmin) >= size_tol * img_width and (
+        ymax - ymin
+    ) >= size_tol * img_height
+    if big_enough:
+        not_sparse = num_positive_pixels / num_total_pixels >= 0.3
+    else:
+        not_sparse = False
+    return not_sparse and big_enough
+
+
+# depth utils
 def _preprocess_depth(depth):
     depth = depth[:, :, 0]*1
     mask2 = depth > 0.99
@@ -102,6 +175,9 @@ class Exploration_Env(habitat.RLEnv):
         self.scene_name = None
         self.maps_dict = {}
 
+        self.category_instance_lists, self.instance_category_lists = print_scene_objects(self._env.sim._sim)
+        self.num_viz = 0
+
     def randomize_env(self):
         self._env._episode_iterator._shuffle_iterator()
 
@@ -142,6 +218,16 @@ class Exploration_Env(habitat.RLEnv):
         self.explorable_map = None
         while self.explorable_map is None:
             obs = super().reset()
+            # add more randomness
+            self._agent_state = self._env.sim.get_agent_state()
+            self._agent_state.position = self._env.sim.sample_navigable_point() # location has dimension 3
+            random_rotation = np.random.rand(4) # rotation has dimension 4
+            random_rotation[1] = 0.0
+            random_rotation[3] = 0.0
+            self._agent_state.rotation = quaternion.as_quat_array(random_rotation)
+            self._env.sim.set_agent_state(self._agent_state.position, self._agent_state.rotation)
+            obs = self._env.sim.get_observations_at(self._agent_state.position, self._agent_state.rotation, True)
+
             full_map_size = args.map_size_cm//args.map_resolution
             self.explorable_map = self._get_gt_map(full_map_size)
         self.prev_explored_area = 0.
@@ -311,6 +397,10 @@ class Exploration_Env(habitat.RLEnv):
                 self.save_trajectory_data()
         else:
             done = False
+
+        # if np.random.uniform() <= 0.5:
+        save_dir = os.path.join("/home/xinranliang/projects/neural-slam/logs", self.args.exp_name)
+        self.save_obs(obs['rgb'].astype(np.uint8), obs['semantic'], self.scene_name.split("/")[-1].split(".")[0], save_dir)
 
         return state, rew, done, self.info
 
@@ -582,6 +672,69 @@ class Exploration_Env(habitat.RLEnv):
 
         return output
 
+    def save_obs(self, obs_rgb, obs_semantic, scene_str, save_dir):
+        save_dir = os.path.join(save_dir, scene_str)
+        os.makedirs(save_dir, exist_ok=True)
+        os.makedirs(os.path.join(save_dir, "rgb"), exist_ok=True)
+        os.makedirs(os.path.join(save_dir, "dict"), exist_ok=True)
+
+        # at single timestep
+        record = {}
+        # process one hot encode version
+        max_inst_id = max(list(self.instance_category_lists.keys()))
+        seg_obs_one_hot = np.arange(max_inst_id + 1) # shape: (max(instance_id) + 1) x height x width
+        seg_obs_one_hot = (seg_obs_one_hot[:, np.newaxis, np.newaxis] == obs_semantic).astype(int)
+
+        idx = "%s_ep%02d_t%03d_num%05d" % (scene_str, self.episode_no, self.timestep, self.num_viz)
+        file_index = "ep%02d_t%03d_num%05d" % (self.episode_no, self.timestep, self.num_viz)
+        record["file_name"] = os.path.join(save_dir, "rgb", "{}.png".format(file_index))
+        record["image_id"] = idx
+        record["height"] = self.args.env_frame_width
+        record["width"] = self.args.env_frame_width
+
+        # save RGB
+        color_img = Image.fromarray(obs_rgb, mode="RGB")
+        color_img.save(record["file_name"])
+
+        objs = []
+
+        for instance_id in list(self.instance_category_lists.keys()):
+
+            # query one hot vector as object mask
+            obj_mask = seg_obs_one_hot[instance_id]
+            # get object mask
+            # select bounding box numbers
+            nonzero_index = np.argwhere(obj_mask == 1)
+
+            # nontrivial object mask
+            if nonzero_index.shape[0] > 0:
+
+                # query category of object
+                category = self.instance_category_lists[instance_id]
+
+                py_min, px_min = tuple(np.amin(nonzero_index, axis=0))
+                py_max, px_max = tuple(np.amax(nonzero_index, axis=0))
+                
+                obj = {
+                        "bbox": [px_min, py_min, px_max, py_max],
+                        "bbox_mode": BoxMode.XYXY_ABS,
+                        "segmentation": pycocotools.mask.encode(np.asarray(obj_mask, order="F").astype('uint8')),
+                        "category_id": category,
+                        }
+                
+                filter_obj = area_filter(obj_mask, obj['bbox'], self.args.frame_height, self.args.frame_width)
+                if filter_obj:
+                    objs.append(obj)
+            
+        record["annotations"] = objs
+
+        # save label
+        with open(os.path.join(save_dir, "dict", "{}.pkl".format(file_index)), "wb") as f:
+            pickle.dump(record, f)
+            f.close()
+        
+        self.num_viz += 1
+    
     def _get_gt_map(self, full_map_size):
         self.scene_name = self.habitat_env.sim.config.SCENE
         logger.error('Computing map for %s', self.scene_name)

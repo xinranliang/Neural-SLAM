@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from collections import deque
 
 import os
@@ -31,6 +32,12 @@ import matplotlib.pyplot as plt
 
 
 args = get_args()
+args.seed = (
+            os.getpid()
+            + int(datetime.now().strftime("%S%f"))
+            + int.from_bytes(os.urandom(2), "big")
+    )
+print("Using a generated random seed {}".format(args.seed))
 
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)

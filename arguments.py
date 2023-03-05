@@ -174,13 +174,13 @@ def get_args():
                 args.total_num_scenes = int(args.total_num_scenes)
             elif "gibson" in args.task_config and \
                     "train" in args.split:
-                args.total_num_scenes = 72
+                args.total_num_scenes = 25
             elif "gibson" in args.task_config and \
                     "val_mt" in args.split:
-                args.total_num_scenes = 14
+                args.total_num_scenes = 1
             elif "gibson" in args.task_config and \
                     "val" in args.split:
-                args.total_num_scenes = 1
+                args.total_num_scenes = 5
             else:
                 assert False, "Unknown task config, please specify" + \
                         " total_num_scenes"

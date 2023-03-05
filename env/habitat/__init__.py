@@ -1,7 +1,9 @@
 # Parts of the code in this file have been borrowed from:
 #    https://github.com/facebookresearch/habitat-api
 
+import os
 import numpy as np
+import random
 import torch
 from habitat.config.default import get_config as cfg_env
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
@@ -16,6 +18,8 @@ from habitat_baselines.config.default import get_config as cfg_baseline
 def make_env_fn(args, config_env, config_baseline, rank):
     dataset = PointNavDatasetV1(config_env.DATASET)
     config_env.defrost()
+    for idx in range(len(dataset.episodes)):
+        dataset.episodes[idx].scene_id = dataset.episodes[idx].scene_id.replace("//", "/")
     config_env.SIMULATOR.SCENE = dataset.episodes[0].scene_id
     print("Loading {}".format(config_env.SIMULATOR.SCENE))
     config_env.freeze()
