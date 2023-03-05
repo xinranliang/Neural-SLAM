@@ -26,6 +26,10 @@ from env.utils.map_builder import MapBuilder
 from env.utils.fmm_planner import FMMPlanner
 
 from env.habitat.utils.noisy_actions import CustomActionSpaceConfiguration
+from habitat.sims.habitat_simulator.actions import (
+    HabitatSimV0ActionSpaceConfiguration,
+    HabitatSimActions
+)
 import env.habitat.utils.pose as pu
 import env.habitat.utils.visualizations as vu
 from env.habitat.utils.supervision import HabitatMaps
@@ -70,15 +74,14 @@ class Exploration_Env(habitat.RLEnv):
         self.sensor_noise_left = \
                 pickle.load(open("noise_models/sensor_noise_left.pkl", 'rb'))
 
-        habitat.SimulatorActions.extend_action_space("NOISY_FORWARD")
-        habitat.SimulatorActions.extend_action_space("NOISY_RIGHT")
-        habitat.SimulatorActions.extend_action_space("NOISY_LEFT")
+        HabitatSimActions.extend_action_space("NOISY_FORWARD")
+        HabitatSimActions.extend_action_space("NOISY_RIGHT")
+        HabitatSimActions.extend_action_space("NOISY_LEFT")
 
         config_env.defrost()
         config_env.SIMULATOR.ACTION_SPACE_CONFIG = \
                 "CustomActionSpaceConfiguration"
         config_env.freeze()
-
 
         super().__init__(config_env, dataset)
 
@@ -195,26 +198,28 @@ class Exploration_Env(habitat.RLEnv):
 
         args = self.args
         self.timestep += 1
+        action = action['action']
 
         # Action remapping
         if action == 2: # Forward
             action = 1
-            noisy_action = habitat.SimulatorActions.NOISY_FORWARD
+            noisy_action = HabitatSimActions.NOISY_FORWARD
         elif action == 1: # Right
             action = 3
-            noisy_action = habitat.SimulatorActions.NOISY_RIGHT
+            noisy_action = HabitatSimActions.NOISY_RIGHT
         elif action == 0: # Left
             action = 2
-            noisy_action = habitat.SimulatorActions.NOISY_LEFT
+            noisy_action = HabitatSimActions.NOISY_LEFT
 
         self.last_loc = np.copy(self.curr_loc)
         self.last_loc_gt = np.copy(self.curr_loc_gt)
         self._previous_action = action
 
-        if args.noisy_actions:
-            obs, rew, done, info = super().step(noisy_action)
-        else:
-            obs, rew, done, info = super().step(action)
+        # if args.noisy_actions:
+            # obs, rew, done, info = super().step(noisy_action)
+        # else:
+            # obs, rew, done, info = super().step(action)
+        obs, rew, done, info = super().step(action)
 
         # Preprocess observations
         rgb = obs['rgb'].astype(np.uint8)

@@ -6,10 +6,13 @@ import habitat_sim
 import habitat_sim.utils
 import magnum as mn
 import numpy as np
-from habitat.sims.habitat_simulator.action_spaces import (
+from habitat.sims.habitat_simulator.actions import (
     HabitatSimV0ActionSpaceConfiguration,
+    HabitatSimActions
 )
-from habitat_sim.agent.controls import register_move_fn
+
+# from habitat_sim.agent.controls import register_move_fn
+from habitat_sim.registry import registry
 
 actuation_noise_fwd = pickle.load(open("noise_models/actuation_noise_fwd.pkl", 'rb'))
 actuation_noise_right = pickle.load(open("noise_models/actuation_noise_right.pkl", 'rb'))
@@ -60,7 +63,7 @@ def _noisy_action_impl(
     _custom_action_impl(scene_node, delta_dist, delta_dist_angle, delta_angle)
 
 
-@register_move_fn(body_action=True)
+@registry.register_move_fn(body_action=True)
 class NoisyForward(habitat_sim.SceneNodeControl):
     def __call__(
             self,
@@ -73,7 +76,7 @@ class NoisyForward(habitat_sim.SceneNodeControl):
         )
 
 
-@register_move_fn(body_action=True)
+@registry.register_move_fn(body_action=True)
 class NoisyRight(habitat_sim.SceneNodeControl):
     def __call__(
             self,
@@ -86,7 +89,7 @@ class NoisyRight(habitat_sim.SceneNodeControl):
         )
 
 
-@register_move_fn(body_action=True)
+@registry.register_move_fn(body_action=True)
 class NoisyLeft(habitat_sim.SceneNodeControl):
     def __call__(
             self,
@@ -104,15 +107,15 @@ class CustomActionSpaceConfiguration(HabitatSimV0ActionSpaceConfiguration):
     def get(self):
         config = super().get()
 
-        config[habitat.SimulatorActions.NOISY_FORWARD] = habitat_sim.ActionSpec(
+        config[HabitatSimActions.NOISY_FORWARD] = habitat_sim.ActionSpec(
             "noisy_forward",
             CustomActuationSpec(0),
         )
-        config[habitat.SimulatorActions.NOISY_RIGHT] = habitat_sim.ActionSpec(
+        config[HabitatSimActions.NOISY_RIGHT] = habitat_sim.ActionSpec(
             "noisy_right",
             CustomActuationSpec(1),
         )
-        config[habitat.SimulatorActions.NOISY_LEFT] = habitat_sim.ActionSpec(
+        config[HabitatSimActions.NOISY_LEFT] = habitat_sim.ActionSpec(
             "noisy_left",
             CustomActuationSpec(2),
         )

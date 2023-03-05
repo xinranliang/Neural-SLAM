@@ -7,8 +7,10 @@ from habitat.config.default import get_config as cfg_env
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
 
 from .exploration_env import Exploration_Env
-from .habitat_api.habitat.core.vector_env import VectorEnv
-from .habitat_api.habitat_baselines.config.default import get_config as cfg_baseline
+# from .habitat_api.habitat.core.vector_env import VectorEnv
+from habitat.core.vector_env import VectorEnv
+from habitat_baselines.config.default import get_config as cfg_baseline
+# from .habitat_api.habitat_baselines.config.default import get_config as cfg_baseline
 
 
 def make_env_fn(args, config_env, config_baseline, rank):
@@ -32,7 +34,7 @@ def construct_envs(args):
     args_list = []
 
     basic_config = cfg_env(config_paths=
-                           ["env/habitat/habitat_api/configs/" + args.task_config])
+                           ["/home/xinranliang/projects/neural-slam/habitat-lab/configs/" + args.task_config])
     basic_config.defrost()
     basic_config.DATASET.SPLIT = args.split
     basic_config.freeze()
@@ -48,7 +50,7 @@ def construct_envs(args):
 
     for i in range(args.num_processes):
         config_env = cfg_env(config_paths=
-                             ["env/habitat/habitat_api/configs/" + args.task_config])
+                             ["/home/xinranliang/projects/neural-slam/habitat-lab/configs/" + args.task_config])
         config_env.defrost()
 
         if len(scenes) > 0:
@@ -67,6 +69,7 @@ def construct_envs(args):
         agent_sensors = []
         agent_sensors.append("RGB_SENSOR")
         agent_sensors.append("DEPTH_SENSOR")
+        agent_sensors.append("SEMANTIC_SENSOR")
 
         config_env.SIMULATOR.AGENT_0.SENSORS = agent_sensors
 
@@ -83,7 +86,12 @@ def construct_envs(args):
         config_env.SIMULATOR.DEPTH_SENSOR.HFOV = args.hfov
         config_env.SIMULATOR.DEPTH_SENSOR.POSITION = [0, args.camera_height, 0]
 
-        config_env.SIMULATOR.TURN_ANGLE = 10
+        config_env.SIMULATOR.SEMANTIC_SENSOR.WIDTH = args.env_frame_width
+        config_env.SIMULATOR.SEMANTIC_SENSOR.HEIGHT = args.env_frame_height
+        config_env.SIMULATOR.SEMANTIC_SENSOR.HFOV = args.hfov
+        config_env.SIMULATOR.SEMANTIC_SENSOR.POSITION = [0, args.camera_height, 0]
+
+        config_env.SIMULATOR.TURN_ANGLE = 30
         config_env.DATASET.SPLIT = args.split
 
         config_env.freeze()
