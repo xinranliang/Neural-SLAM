@@ -398,7 +398,7 @@ class Exploration_Env(habitat.RLEnv):
         else:
             done = False
 
-        if np.random.uniform() <= 0.5:
+        if np.random.uniform() < 0.2:
             save_dir = os.path.join("/home/xinranliang/projects/neural-slam/logs", self.args.exp_name)
             self.save_obs(obs['rgb'].astype(np.uint8), obs['semantic'], self.scene_name.split("/")[-1].split(".")[0], save_dir)
 
